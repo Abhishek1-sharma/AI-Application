@@ -17,6 +17,7 @@ import {
 import {
   addUserChat,
   createInteraction,
+  fetchAgentRuns,
   fetchHcps,
   fetchInteractions,
   fetchTools,
@@ -50,7 +51,7 @@ const defaultForm = {
 
 function App() {
   const dispatch = useDispatch();
-  const { hcps, interactions, tools, selectedHcpId, mode, lastAiResult, chatMessages, status, error } =
+  const { hcps, interactions, tools, agentRuns, selectedHcpId, mode, lastAiResult, chatMessages, status, error } =
     useSelector((state) => state.crm);
   const [form, setForm] = useState(defaultForm);
   const [chatText, setChatText] = useState(
@@ -61,6 +62,7 @@ function App() {
     dispatch(fetchHcps());
     dispatch(fetchInteractions());
     dispatch(fetchTools());
+    dispatch(fetchAgentRuns());
   }, [dispatch]);
 
   const selectedHcp = useMemo(
@@ -79,6 +81,14 @@ function App() {
     dispatch(addUserChat(chatText));
     dispatch(sendChat({ message: chatText, hcp_id: Number(selectedHcpId) }));
     setChatText("");
+  };
+
+  const runAllTools = () => {
+    tools.forEach((tool, index) => {
+      window.setTimeout(() => {
+        dispatch(runToolDemo({ tool_name: tool.name, payload: demoPayload(tool.name) }));
+      }, index * 250);
+    });
   };
 
   const demoPayload = (toolName) => {
@@ -135,6 +145,14 @@ function App() {
             <Sparkles size={18} />
             Agent Tools
           </div>
+          <div className="tool-metrics">
+            <strong>{tools.length}</strong>
+            <span>LangGraph tools ready</span>
+          </div>
+          <button className="run-all" onClick={runAllTools}>
+            <Sparkles size={16} />
+            Demo All Tools
+          </button>
           <div className="tool-list">
             {tools.map((tool) => {
               const Icon = toolIcons[tool.name] || CheckCircle2;
@@ -242,6 +260,19 @@ function App() {
             AI Output
           </div>
           <pre>{JSON.stringify(lastAiResult || { status: "No AI action yet" }, null, 2)}</pre>
+
+          <div className="panel-title compact">
+            <Bot size={18} />
+            Agent Trace
+          </div>
+          <div className="trace-list">
+            {agentRuns.slice(0, 4).map((run) => (
+              <article key={run.id} className="trace-card">
+                <strong>{run.selected_tool?.replaceAll("_", " ")}</strong>
+                <span>{run.result?.routing_reason || run.user_message}</span>
+              </article>
+            ))}
+          </div>
 
           <div className="panel-title compact">
             <ClipboardList size={18} />

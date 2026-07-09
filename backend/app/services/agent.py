@@ -1,10 +1,11 @@
-from typing import Any, Literal, TypedDict
+from typing import Any, TypedDict
 
 from langchain_core.tools import tool
 from langgraph.graph import END, StateGraph
 from sqlalchemy.orm import Session
 
 from app.models import AgentRun
+from app.services.llm import select_agent_tool
 from app.services.tools import (
     check_compliance_tool,
     edit_interaction_tool,
@@ -21,7 +22,9 @@ class AgentState(TypedDict):
     hcp_id: int | None
     interaction_id: int | None
     payload: dict[str, Any]
+    forced_tool: str | None
     selected_tool: str
+    routing_reason: str
     result: dict[str, Any]
 
 
@@ -77,37 +80,32 @@ AGENT_TOOLS = [
     summarize_history,
 ]
 
-
-def _route_tool(state: AgentState) -> Literal[
-    "log_interaction",
-    "edit_interaction",
-    "suggest_next_best_action",
-    "schedule_follow_up",
-    "retrieve_hcp_profile",
-    "check_compliance",
-    "summarize_history",
-]:
-    message = state["message"].lower()
-    if "edit" in message or "update" in message or state.get("interaction_id"):
-        return "edit_interaction"
-    if "next best" in message or "recommend" in message or "what should i do" in message:
-        return "suggest_next_best_action"
-    if "schedule" in message or "follow-up" in message or "follow up" in message:
-        return "schedule_follow_up"
-    if "profile" in message or "hcp details" in message:
-        return "retrieve_hcp_profile"
-    if "compliance" in message or "check" in message:
-        return "check_compliance"
-    if "history" in message or "summarize" in message:
-        return "summarize_history"
-    return "log_interaction"
+AGENT_TOOL_NAMES = {tool.name for tool in AGENT_TOOLS}
 
 
 def build_agent(db: Session):
     graph = StateGraph(AgentState)
 
     def router_node(state: AgentState) -> AgentState:
-        return {**state, "selected_tool": _route_tool(state)}
+        if state.get("forced_tool"):
+            if state["forced_tool"] not in AGENT_TOOL_NAMES:
+                raise ValueError(f"Unknown LangGraph tool: {state['forced_tool']}")
+            return {
+                **state,
+                "selected_tool": str(state["forced_tool"]),
+                "routing_reason": "Tool was selected directly from the demo panel.",
+            }
+        selection = select_agent_tool(state["message"])
+        if state.get("interaction_id") and selection["tool_name"] == "log_interaction":
+            selection = {
+                "tool_name": "edit_interaction",
+                "routing_reason": "Interaction id was supplied, so LangGraph routed to edit_interaction.",
+            }
+        return {
+            **state,
+            "selected_tool": selection["tool_name"],
+            "routing_reason": selection["routing_reason"],
+        }
 
     def execute_node(state: AgentState) -> AgentState:
         tool_name = state["selected_tool"]
@@ -137,6 +135,7 @@ def build_agent(db: Session):
         else:
             result = summarize_history_tool(db, int(hcp_id))
 
+        result = {**result, "routing_reason": state.get("routing_reason", "")}
         db.add(AgentRun(user_message=state["message"], selected_tool=tool_name, result=result))
         db.commit()
         return {**state, "result": result}
@@ -149,7 +148,14 @@ def build_agent(db: Session):
     return graph.compile()
 
 
-def run_agent(db: Session, message: str, payload: dict[str, Any], hcp_id: int | None = None, interaction_id: int | None = None) -> dict[str, Any]:
+def run_agent(
+    db: Session,
+    message: str,
+    payload: dict[str, Any],
+    hcp_id: int | None = None,
+    interaction_id: int | None = None,
+    forced_tool: str | None = None,
+) -> dict[str, Any]:
     agent = build_agent(db)
     state = agent.invoke(
         {
@@ -157,8 +163,14 @@ def run_agent(db: Session, message: str, payload: dict[str, Any], hcp_id: int | 
             "payload": payload,
             "hcp_id": hcp_id,
             "interaction_id": interaction_id,
+            "forced_tool": forced_tool,
             "selected_tool": "",
+            "routing_reason": "",
             "result": {},
         }
     )
-    return {"selected_tool": state["selected_tool"], "result": state["result"]}
+    return {
+        "selected_tool": state["selected_tool"],
+        "routing_reason": state["routing_reason"],
+        "result": state["result"],
+    }

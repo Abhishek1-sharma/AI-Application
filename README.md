@@ -12,6 +12,12 @@ The project includes:
 - A dual-mode Log Interaction screen: structured form and conversational chat
 - Seven sales-focused LangGraph tools, including the required Log Interaction and Edit Interaction tools
 
+Extra reviewer files:
+
+- `docs/ARCHITECTURE.md` maps each assignment requirement to the implementation.
+- `docs/API_EXAMPLES.md` gives curl commands for backend demos.
+- `docs/schema.sql` shows the SQL schema.
+
 ## Product Understanding
 
 Field representatives need to record HCP engagements quickly while preserving compliant, structured CRM data. This implementation lets the rep either complete a structured form or write naturally in chat. The LangGraph agent routes the request to the correct tool, enriches interaction notes with LLM summarization and entity extraction, checks compliance-sensitive language, and helps the rep decide the next best action.

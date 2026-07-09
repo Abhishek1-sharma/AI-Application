@@ -143,6 +143,27 @@ label {
   gap: 8px;
 }
 
+.tool-metrics {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid #d7e2de;
+  border-radius: 8px;
+  background: #f7faf9;
+}
+
+.tool-metrics strong {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.tool-metrics span {
+  color: #4d605a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .tool-button {
   display: grid;
   grid-template-columns: 18px 1fr;
@@ -155,6 +176,21 @@ label {
   color: #243b35;
   text-align: left;
   text-transform: capitalize;
+}
+
+.run-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  margin-bottom: 10px;
+  border: 1px solid #1f7667;
+  border-radius: 6px;
+  background: #1f7667;
+  color: #ffffff;
+  font-weight: 800;
 }
 
 .main-panel {
@@ -277,6 +313,33 @@ label {
 .recent-list {
   display: grid;
   gap: 10px;
+}
+
+.trace-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.trace-card {
+  padding: 10px;
+  border: 1px solid #d7e2de;
+  border-radius: 8px;
+  background: #f7faf9;
+}
+
+.trace-card strong {
+  display: block;
+  color: #243b35;
+  text-transform: capitalize;
+}
+
+.trace-card span {
+  display: block;
+  margin-top: 4px;
+  color: #4d605a;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .interaction-card {

@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine, get_db
 from app.models import HCP, Interaction
-from app.schemas import ChatRequest, ChatResponse, InteractionCreate, InteractionOut, ToolDemoRequest
+from app.schemas import ChatRequest, ChatResponse, InteractionCreate, InteractionUpdate, ToolDemoRequest
 from app.seed import seed_demo_data
 from app.services.agent import AGENT_TOOLS, run_agent
-from app.services.tools import interaction_to_dict, log_interaction_tool
+from app.services.llm import extract_interaction_payload
+from app.services.tools import edit_interaction_tool, interaction_to_dict, log_interaction_tool
 
 
 settings = get_settings()
@@ -64,6 +65,14 @@ def create_interaction(payload: InteractionCreate, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.put("/api/interactions/{interaction_id}")
+def update_interaction(interaction_id: int, payload: InteractionUpdate, db: Session = Depends(get_db)) -> dict:
+    try:
+        return edit_interaction_tool(db, interaction_id, payload.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.post("/api/agent/chat", response_model=ChatResponse)
 def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
     payload = _payload_from_message(request)
@@ -73,7 +82,7 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return ChatResponse(
         selected_tool=output["selected_tool"],
-        answer=f"LangGraph selected {output['selected_tool']} and completed the action.",
+        answer=f"LangGraph selected {output['selected_tool']}: {output['routing_reason']}",
         data=output["result"],
     )
 
@@ -92,23 +101,37 @@ def list_agent_tools() -> list[dict]:
 @app.post("/api/agent/demo")
 def demo_tool(request: ToolDemoRequest, db: Session = Depends(get_db)) -> dict:
     try:
-        output = run_agent(db, request.tool_name.replace("_", " "), request.payload, request.payload.get("hcp_id"), request.payload.get("interaction_id"))
+        output = run_agent(
+            db,
+            f"Demo exact tool {request.tool_name}",
+            request.payload,
+            request.payload.get("hcp_id"),
+            request.payload.get("interaction_id"),
+            forced_tool=request.tool_name,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return output
 
 
+@app.get("/api/agent/runs")
+def list_agent_runs(db: Session = Depends(get_db)) -> list[dict]:
+    from app.models import AgentRun
+
+    runs = db.query(AgentRun).order_by(AgentRun.created_at.desc()).limit(15).all()
+    return [
+        {
+            "id": run.id,
+            "user_message": run.user_message,
+            "selected_tool": run.selected_tool,
+            "result": run.result,
+            "created_at": run.created_at,
+        }
+        for run in runs
+    ]
+
+
 def _payload_from_message(request: ChatRequest) -> dict:
     if request.hcp_id:
-        return {
-            "hcp_id": request.hcp_id,
-            "interaction_type": "Conversational Log",
-            "channel": "Chat",
-            "product_discussed": "CardioGuard",
-            "objective": "Capture field interaction from chat",
-            "notes": request.message,
-            "commitment": "Parsed from conversation",
-            "next_step": "AI recommended follow-up",
-            "follow_up_date": "",
-        }
+        return extract_interaction_payload(request.message, request.hcp_id)
     return {"text": request.message}
