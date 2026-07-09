@@ -20,6 +20,10 @@ export const createInteraction = createAsyncThunk("crm/createInteraction", async
   const result = await api("/interactions", { method: "POST", body: JSON.stringify(payload) });
   return result.interaction;
 });
+export const updateInteraction = createAsyncThunk("crm/updateInteraction", async ({ interactionId, payload }) => {
+  const result = await api(`/interactions/${interactionId}`, { method: "PUT", body: JSON.stringify(payload) });
+  return result.interaction;
+});
 export const sendChat = createAsyncThunk("crm/sendChat", (payload) =>
   api("/agent/chat", { method: "POST", body: JSON.stringify(payload) })
 );
@@ -78,6 +82,22 @@ const crmSlice = createSlice({
         state.lastAiResult = action.payload;
       })
       .addCase(createInteraction.rejected, (state, action) => {
+        state.status = "idle";
+        state.error = action.error.message;
+      })
+      .addCase(updateInteraction.pending, (state) => {
+        state.status = "saving";
+      })
+      .addCase(updateInteraction.fulfilled, (state, action) => {
+        state.status = "idle";
+        state.error = "";
+        const existingIndex = state.interactions.findIndex((item) => item.id === action.payload.id);
+        if (existingIndex >= 0) {
+          state.interactions[existingIndex] = action.payload;
+        }
+        state.lastAiResult = action.payload;
+      })
+      .addCase(updateInteraction.rejected, (state, action) => {
         state.status = "idle";
         state.error = action.error.message;
       })

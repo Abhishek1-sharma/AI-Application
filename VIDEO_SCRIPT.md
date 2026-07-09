@@ -12,6 +12,8 @@ The mandatory technical pieces are React, Redux, FastAPI, LangGraph, Groq `gemma
 
 Show the HCP selector, profile summary, structured logging form, conversational logging tab, AI output panel, recent interactions list, and agent tool demo buttons.
 
+After logging one interaction, click Edit in Recent Interactions, change the notes, and submit Update Interaction. This demonstrates the required Edit Interaction capability in the actual UI.
+
 ## 3. LangGraph Tool Demo
 
 Click and explain at least these five tools:
@@ -26,6 +28,8 @@ Then optionally show:
 
 - `retrieve_hcp_profile`
 - `summarize_history`
+
+Use the Demo All Tools button to quickly prove all LangGraph tool nodes execute and appear in Agent Trace.
 
 ## 4. Code Structure
 

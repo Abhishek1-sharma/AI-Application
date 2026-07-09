@@ -232,6 +232,29 @@ label {
   gap: 16px;
 }
 
+.edit-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #c9d8d2;
+  border-radius: 8px;
+  background: #fff7e8;
+  color: #6d4d12;
+  font-weight: 800;
+}
+
+.edit-banner button {
+  margin-left: auto;
+  min-height: 30px;
+  border: 1px solid #d8bb80;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #6d4d12;
+  font-weight: 800;
+}
+
 .grid {
   display: grid;
   gap: 14px;
@@ -366,6 +389,20 @@ label {
   color: #4d605a;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.interaction-card button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin-top: 10px;
+  border: 1px solid #b7cac3;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #28433c;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 @media (max-width: 1120px) {

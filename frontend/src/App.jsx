@@ -25,6 +25,7 @@ import {
   sendChat,
   setMode,
   setSelectedHcpId,
+  updateInteraction,
 } from "./store";
 
 const toolIcons = {
@@ -54,6 +55,7 @@ function App() {
   const { hcps, interactions, tools, agentRuns, selectedHcpId, mode, lastAiResult, chatMessages, status, error } =
     useSelector((state) => state.crm);
   const [form, setForm] = useState(defaultForm);
+  const [editingInteractionId, setEditingInteractionId] = useState(null);
   const [chatText, setChatText] = useState(
     "Log that Dr. Mehra discussed CardioGuard today, showed interest, asked about safety data, and requested a follow-up next week."
   );
@@ -72,7 +74,32 @@ function App() {
 
   const onSubmit = (event) => {
     event.preventDefault();
+    if (editingInteractionId) {
+      dispatch(updateInteraction({ interactionId: editingInteractionId, payload: form }));
+      return;
+    }
     dispatch(createInteraction({ ...form, hcp_id: Number(selectedHcpId) }));
+  };
+
+  const startEdit = (interaction) => {
+    setEditingInteractionId(interaction.id);
+    dispatch(setMode("form"));
+    dispatch(setSelectedHcpId(interaction.hcp_id));
+    setForm({
+      interaction_type: interaction.interaction_type,
+      channel: interaction.channel,
+      product_discussed: interaction.product_discussed,
+      objective: interaction.objective,
+      notes: interaction.notes,
+      commitment: interaction.commitment,
+      next_step: interaction.next_step,
+      follow_up_date: interaction.follow_up_date,
+    });
+  };
+
+  const resetForm = () => {
+    setEditingInteractionId(null);
+    setForm(defaultForm);
   };
 
   const onChat = (event) => {
@@ -185,6 +212,13 @@ function App() {
 
           {mode === "form" ? (
             <form className="log-form" onSubmit={onSubmit}>
+              {editingInteractionId && (
+                <div className="edit-banner">
+                  <Edit3 size={16} />
+                  Editing interaction #{editingInteractionId}
+                  <button type="button" onClick={resetForm}>New Log</button>
+                </div>
+              )}
               <div className="grid two">
                 <label>
                   Interaction Type
@@ -230,8 +264,8 @@ function App() {
                 </label>
               </div>
               <button className="primary-action" type="submit" disabled={status === "saving"}>
-                <Save size={18} />
-                {status === "saving" ? "Saving" : "Log Interaction"}
+                {editingInteractionId ? <Edit3 size={18} /> : <Save size={18} />}
+                {status === "saving" ? "Saving" : editingInteractionId ? "Update Interaction" : "Log Interaction"}
               </button>
               {error && <p className="error">{error}</p>}
             </form>
@@ -284,6 +318,10 @@ function App() {
                 <strong>{interaction.hcp_name}</strong>
                 <span>{interaction.product_discussed}</span>
                 <p>{interaction.summary}</p>
+                <button title="Edit interaction" onClick={() => startEdit(interaction)}>
+                  <Edit3 size={14} />
+                  Edit
+                </button>
               </article>
             ))}
           </div>

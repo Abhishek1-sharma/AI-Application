@@ -17,6 +17,7 @@ Extra reviewer files:
 - `docs/ARCHITECTURE.md` maps each assignment requirement to the implementation.
 - `docs/API_EXAMPLES.md` gives curl commands for backend demos.
 - `docs/schema.sql` shows the SQL schema.
+- `docs/ACCEPTANCE_CHECKLIST.md` gives the final submission checklist.
 
 ## Product Understanding
 
@@ -143,19 +144,23 @@ DATABASE_URL=mysql+pymysql://crm_user:crm_password@localhost:3306/hcp_crm
 3. Show conversational logging:
    Switch to Conversational mode, type a natural interaction note, and submit it. Explain that the backend routes it through the LangGraph agent.
 
-4. Demo five tools:
-   Use the Agent Tools buttons for `log_interaction`, `edit_interaction`, `suggest_next_best_action`, `schedule_follow_up`, and `check_compliance`. You can also show `retrieve_hcp_profile` and `summarize_history`.
+4. Demo editing:
+   In Recent Interactions, click Edit, update notes, and click Update Interaction. Explain this uses the required Edit Interaction flow.
 
-5. Explain the code:
+5. Demo five tools:
+   Use Demo All Tools or click `log_interaction`, `edit_interaction`, `suggest_next_best_action`, `schedule_follow_up`, and `check_compliance`. You can also show `retrieve_hcp_profile` and `summarize_history`.
+
+6. Explain the code:
    `frontend/src/App.jsx` is the main screen, `frontend/src/store.js` handles Redux state and API calls, `backend/app/main.py` exposes FastAPI routes, `backend/app/services/agent.py` defines the LangGraph graph, and `backend/app/services/tools.py` contains the tool logic.
 
-6. Close with:
+7. Close with:
    "The system is designed for life-science field reps: fast capture, compliant notes, AI summarization, next-best action planning, and structured CRM persistence."
 
 ## Submission Checklist
 
 - Push this full folder to one GitHub repository.
 - Add your Groq API key only in local `.env`; do not commit the real key.
+- Run the final demo with Postgres using `docker compose up -d db`.
 - Record the 10-15 minute walkthrough.
 - Submit the GitHub repo link and video through the Google Form:
   `https://forms.gle/XdvLNBJkbdVDGADM8`

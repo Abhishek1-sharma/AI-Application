@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    database_url: str = "sqlite:///./hcp_crm.db"
+    database_url: str = "postgresql+psycopg://crm_user:crm_password@localhost:5432/hcp_crm"
 
     groq_api_key: str = ""
     groq_model: str = "gemma2-9b-it"

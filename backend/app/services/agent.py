@@ -107,8 +107,10 @@ def build_agent(db: Session):
             "routing_reason": selection["routing_reason"],
         }
 
-    def execute_node(state: AgentState) -> AgentState:
+    def _run_selected_tool(state: AgentState, expected_tool: str) -> AgentState:
         tool_name = state["selected_tool"]
+        if tool_name != expected_tool:
+            raise ValueError(f"LangGraph routed to {tool_name}, but node {expected_tool} was invoked")
         payload = state.get("payload") or {}
         hcp_id = state.get("hcp_id") or payload.get("hcp_id") or 1
         interaction_id = state.get("interaction_id") or payload.get("interaction_id")
@@ -141,10 +143,29 @@ def build_agent(db: Session):
         return {**state, "result": result}
 
     graph.add_node("router", router_node)
-    graph.add_node("execute_tool", execute_node)
+    graph.add_node("log_interaction", lambda state: _run_selected_tool(state, "log_interaction"))
+    graph.add_node("edit_interaction", lambda state: _run_selected_tool(state, "edit_interaction"))
+    graph.add_node("suggest_next_best_action", lambda state: _run_selected_tool(state, "suggest_next_best_action"))
+    graph.add_node("schedule_follow_up", lambda state: _run_selected_tool(state, "schedule_follow_up"))
+    graph.add_node("retrieve_hcp_profile", lambda state: _run_selected_tool(state, "retrieve_hcp_profile"))
+    graph.add_node("check_compliance", lambda state: _run_selected_tool(state, "check_compliance"))
+    graph.add_node("summarize_history", lambda state: _run_selected_tool(state, "summarize_history"))
     graph.set_entry_point("router")
-    graph.add_edge("router", "execute_tool")
-    graph.add_edge("execute_tool", END)
+    graph.add_conditional_edges(
+        "router",
+        lambda state: state["selected_tool"],
+        {
+            "log_interaction": "log_interaction",
+            "edit_interaction": "edit_interaction",
+            "suggest_next_best_action": "suggest_next_best_action",
+            "schedule_follow_up": "schedule_follow_up",
+            "retrieve_hcp_profile": "retrieve_hcp_profile",
+            "check_compliance": "check_compliance",
+            "summarize_history": "summarize_history",
+        },
+    )
+    for tool_name in AGENT_TOOL_NAMES:
+        graph.add_edge(tool_name, END)
     return graph.compile()
 
 
