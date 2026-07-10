@@ -24,6 +24,9 @@ Use this before pushing to GitHub and recording the video.
 - Tool demo: Agent Tools panel and Demo All Tools button
 - AI enrichment: summary, sentiment, entities, compliance flags
 - Agent traceability: Agent Trace panel and `/api/agent/runs`
+- Backend tests: `backend/tests/test_tools_and_agent.py`
+- Frontend production build: `npm run build`
+- GitHub Actions CI: `.github/workflows/ci.yml`
 
 ## Video Recording Flow
 
@@ -45,3 +48,5 @@ Use this before pushing to GitHub and recording the video.
 - GitHub repository contains frontend, backend, docs, README, and docker-compose
 - Real API key is not committed
 - Video shows at least 5 tools working
+- Backend tests pass with `pytest`
+- Frontend build passes with `npm run build`

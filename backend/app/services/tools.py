@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import HCP, Interaction
 from app.schemas import InteractionCreate, InteractionUpdate
 from app.services.llm import analyze_interaction
+from app.time_utils import utc_now
 
 
 def interaction_to_dict(interaction: Interaction) -> dict[str, Any]:
@@ -40,7 +41,7 @@ def log_interaction_tool(db: Session, payload: dict[str, Any]) -> dict[str, Any]
         hcp_id=data.hcp_id,
         interaction_type=data.interaction_type,
         channel=data.channel,
-        occurred_at=data.occurred_at or datetime.utcnow(),
+        occurred_at=data.occurred_at or utc_now(),
         product_discussed=data.product_discussed,
         objective=data.objective,
         notes=data.notes,
@@ -73,7 +74,7 @@ def edit_interaction_tool(db: Session, interaction_id: int, payload: dict[str, A
         interaction.sentiment = analysis.get("sentiment", interaction.sentiment)
         interaction.entities = analysis.get("entities", interaction.entities)
         interaction.compliance_flags = analysis.get("compliance_flags", interaction.compliance_flags)
-    interaction.updated_at = datetime.utcnow()
+    interaction.updated_at = utc_now()
     db.commit()
     db.refresh(interaction)
     return {"message": "Interaction edited and AI analysis refreshed.", "interaction": interaction_to_dict(interaction)}
@@ -104,7 +105,7 @@ def schedule_follow_up_tool(db: Session, hcp_id: int, days_from_now: int = 7, pu
     hcp = db.get(HCP, hcp_id)
     if not hcp:
         raise ValueError("HCP not found")
-    due_date = (datetime.utcnow() + timedelta(days=days_from_now)).date().isoformat()
+    due_date = (utc_now() + timedelta(days=days_from_now)).date().isoformat()
     return {
         "hcp": hcp.name,
         "due_date": due_date,

@@ -125,6 +125,25 @@ Backend API docs:
 http://localhost:8000/docs
 ```
 
+## Verify Before Submission
+
+Run backend tests:
+
+```bash
+cd backend
+.venv\Scripts\activate
+pytest
+```
+
+Run frontend production build:
+
+```bash
+cd frontend
+npm run build
+```
+
+The repository also includes GitHub Actions CI in `.github/workflows/ci.yml`.
+
 ## MySQL Option
 
 Use a MySQL connection string in `backend/.env`:
