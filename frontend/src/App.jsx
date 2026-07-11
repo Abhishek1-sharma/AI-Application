@@ -1,70 +1,178 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  Activity,
-  Bot,
-  CalendarClock,
-  CheckCircle2,
-  ClipboardList,
-  Edit3,
-  MessageSquareText,
-  Save,
-  ShieldCheck,
-  Sparkles,
-  Stethoscope,
-  UserRoundSearch,
-} from "lucide-react";
-import {
-  addUserChat,
   createInteraction,
-  fetchAgentRuns,
+  extractInteraction,
   fetchHcps,
-  fetchInteractions,
-  fetchTools,
-  runToolDemo,
-  sendChat,
-  setMode,
   setSelectedHcpId,
   updateInteraction,
 } from "./store";
 
-const toolIcons = {
-  log_interaction: ClipboardList,
-  edit_interaction: Edit3,
-  suggest_next_best_action: Sparkles,
-  schedule_follow_up: CalendarClock,
-  retrieve_hcp_profile: UserRoundSearch,
-  check_compliance: ShieldCheck,
-  summarize_history: Activity,
-};
-
 const defaultForm = {
-  interaction_type: "Detailing Call",
+  interaction_type: "Meeting",
   channel: "In-person",
-  product_discussed: "CardioGuard",
-  objective: "Discuss appropriate patient profiles and understand current barriers",
-  notes:
-    "Dr. Mehra was interested in the updated clinical evidence, asked about safety profile, and requested a follow-up with a patient profile checklist.",
-  commitment: "Review clinical paper",
-  next_step: "Share approved evidence deck and schedule follow-up",
+  product_discussed: "",
+  objective: "Log HCP interaction",
+  notes: "",
+  commitment: "",
+  next_step: "",
   follow_up_date: "",
 };
 
+function getCurrentDateTimeFields() {
+  const now = new Date();
+  return formatDateTimeForInputs(now);
+}
+
+function padDatePart(value) {
+  return String(value).padStart(2, "0");
+}
+
+function formatDateTimeForInputs(date) {
+  return {
+    date: `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`,
+    time: `${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`,
+  };
+}
+
+const defaultUiFields = {
+  hcp_name: "",
+  ...getCurrentDateTimeFields(),
+  attendees: "",
+  topics_discussed: "",
+  materials_shared: "",
+  samples_distributed: "",
+  sentiment: "Neutral",
+  outcomes: "",
+  follow_up_actions: "",
+};
+
+function normalizeSentiment(value = "") {
+  const lowered = value.toLowerCase();
+  if (lowered.includes("positive")) return "Positive";
+  if (lowered.includes("negative") || lowered.includes("cautious")) return "Negative";
+  return "Neutral";
+}
+
+function inferMaterials(text = "") {
+  const lowered = text.toLowerCase();
+  if (lowered.includes("brochure")) return "Brochures.";
+  if (lowered.includes("deck")) return "Clinical deck.";
+  if (lowered.includes("paper") || lowered.includes("study")) return "Clinical paper.";
+  return "";
+}
+
+function inferSamples(text = "") {
+  return text.toLowerCase().includes("sample") ? "Samples recorded." : "";
+}
+
+function inferDoctorName(text = "") {
+  const match = text.match(/\b(?:dr\.?|doctor)\s+([a-z][a-z.\s-]{1,40})/i);
+  if (!match) return "";
+  const rawName = match[1]
+    .split(/,|\.|\band\b|\bdiscussed\b|\bmet\b|\btoday\b/i)[0]
+    .trim();
+  if (!rawName) return "";
+  return `Dr. ${rawName
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ")}`;
+}
+
+function inferOutcome(text = "") {
+  const lowered = text.toLowerCase();
+  if (lowered.includes("positive")) return "Positive discussion.";
+  if (lowered.includes("requested")) return "HCP requested follow-up information.";
+  if (lowered.includes("discussed")) return "Discussion completed.";
+  return "";
+}
+
+function inferFollowUp(text = "") {
+  const lowered = text.toLowerCase();
+  if (lowered.includes("follow")) return "Schedule follow-up meeting.";
+  if (lowered.includes("brochure") || lowered.includes("material")) return "Send approved material.";
+  return "";
+}
+
+function inferTimeParts(text = "") {
+  const explicitTime =
+    text.match(/\b(?:at|on)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i) ||
+    text.match(/\b(\d{1,2})(?::(\d{2}))\s*(am|pm)?\b/i) ||
+    text.match(/\b(\d{1,2})\s*(am|pm)\b/i);
+
+  if (!explicitTime) return null;
+
+  let hour = Number(explicitTime[1]);
+  const minute = Number(explicitTime[2] && /^\d{2}$/.test(explicitTime[2]) ? explicitTime[2] : 0);
+  const period = (explicitTime[3] || explicitTime[2] || "").toLowerCase();
+
+  if (period === "pm" && hour < 12) hour += 12;
+  if (period === "am" && hour === 12) hour = 0;
+  if (hour > 23 || minute > 59) return null;
+
+  return { hour, minute };
+}
+
+function inferDateTime(text = "") {
+  const lowered = text.toLowerCase();
+  const now = new Date();
+  const inferred = new Date(now);
+
+  if (lowered.includes("tomorrow")) inferred.setDate(now.getDate() + 1);
+  if (lowered.includes("yesterday")) inferred.setDate(now.getDate() - 1);
+
+  const dateMatch = text.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/);
+  if (dateMatch) {
+    const first = Number(dateMatch[1]);
+    const second = Number(dateMatch[2]);
+    const year = dateMatch[3] ? Number(dateMatch[3].length === 2 ? `20${dateMatch[3]}` : dateMatch[3]) : now.getFullYear();
+    inferred.setFullYear(year);
+    inferred.setMonth(second - 1);
+    inferred.setDate(first);
+  }
+
+  const timeParts = inferTimeParts(text);
+  if (timeParts) {
+    inferred.setHours(timeParts.hour);
+    inferred.setMinutes(timeParts.minute);
+    inferred.setSeconds(0);
+    inferred.setMilliseconds(0);
+  }
+
+  return formatDateTimeForInputs(inferred);
+}
+
+function inferHcpIdFromText(text, hcps) {
+  const lowered = text.toLowerCase();
+  const matched = hcps.find((hcp) => {
+    const fullName = hcp.name.toLowerCase();
+    const lastName = fullName.split(" ").at(-1);
+    return lowered.includes(fullName) || lowered.includes(lastName);
+  });
+  return matched?.id;
+}
+
+function formatTimeForInput(value) {
+  if (!value) return "";
+  return value;
+}
+
 function App() {
   const dispatch = useDispatch();
-  const { hcps, interactions, tools, agentRuns, selectedHcpId, mode, lastAiResult, chatMessages, status, error } =
-    useSelector((state) => state.crm);
+  const { hcps, selectedHcpId, extractedDraft, status, error } = useSelector((state) => state.crm);
   const [form, setForm] = useState(defaultForm);
-  const [editingInteractionId, setEditingInteractionId] = useState(null);
-  const [chatText, setChatText] = useState(
-    "Log that Dr. Mehra discussed CardioGuard today, showed interest, asked about safety data, and requested a follow-up next week."
-  );
+  const [uiFields, setUiFields] = useState(defaultUiFields);
+  const [editingInteractionId] = useState(null);
+  const [assistantText, setAssistantText] = useState("");
+  const [assistantMessages, setAssistantMessages] = useState([
+    {
+      role: "info",
+      text: 'Log interaction details here (e.g., "Met Dr. Smith, discussed Prodo-X efficacy, positive sentiment, shared brochure") or ask for help.',
+    },
+  ]);
 
   useEffect(() => {
     dispatch(fetchHcps());
-    dispatch(fetchInteractions());
-    dispatch(fetchTools());
-    dispatch(fetchAgentRuns());
   }, [dispatch]);
 
   const selectedHcp = useMemo(
@@ -72,261 +180,235 @@ function App() {
     [hcps, selectedHcpId]
   );
 
+  const applyAssistantTextToLeftPanel = (text, hcpId = selectedHcpId) => {
+    const matchedHcp = hcps.find((hcp) => hcp.id === Number(hcpId));
+    const inferredDoctorName = inferDoctorName(text);
+    const displayName = inferredDoctorName || matchedHcp?.name || "";
+    const inferredMaterial = inferMaterials(text);
+    const inferredSample = inferSamples(text);
+    const inferredSentiment = normalizeSentiment(text);
+    const inferredDateTime = inferDateTime(text);
+
+    setUiFields((current) => ({
+      ...current,
+      date: inferredDateTime.date,
+      time: inferredDateTime.time,
+      hcp_name: displayName || current.hcp_name,
+      attendees: displayName || current.attendees,
+      topics_discussed: text,
+      materials_shared: inferredMaterial || current.materials_shared,
+      samples_distributed: inferredSample || current.samples_distributed,
+      sentiment: inferredSentiment,
+      outcomes: inferOutcome(text) || current.outcomes,
+      follow_up_actions: inferFollowUp(text) || current.follow_up_actions,
+    }));
+    setForm((current) => ({
+      ...current,
+      notes: text,
+      product_discussed: text.toLowerCase().includes("product x") ? "Product X" : current.product_discussed,
+    }));
+  };
+
+  useEffect(() => {
+    if (!extractedDraft?.interaction) return;
+    const draft = extractedDraft.interaction;
+    const notes = draft.notes || assistantText;
+    setForm((current) => ({
+      ...current,
+      interaction_type: draft.interaction_type || current.interaction_type,
+      channel: draft.channel || current.channel,
+      product_discussed: draft.product_discussed || current.product_discussed,
+      objective: draft.objective || current.objective,
+      notes: notes || current.notes,
+      commitment: draft.commitment || current.commitment,
+      next_step: draft.next_step || current.next_step,
+      follow_up_date: draft.follow_up_date || current.follow_up_date,
+    }));
+    setUiFields((current) => ({
+      ...current,
+      hcp_name: current.hcp_name || selectedHcp?.name || "",
+      attendees: current.attendees || selectedHcp?.name || "",
+      topics_discussed: notes || current.topics_discussed,
+      materials_shared: inferMaterials(notes) || current.materials_shared,
+      samples_distributed: inferSamples(notes) || current.samples_distributed,
+      sentiment: normalizeSentiment(draft.sentiment || notes),
+      outcomes: draft.commitment || current.outcomes,
+      follow_up_actions: draft.next_step || current.follow_up_actions,
+    }));
+    setAssistantMessages((messages) => [
+      ...messages,
+      {
+        role: "success",
+        text:
+          "**Interaction logged successfully!** The details (HCP Name, Date, Sentiment, and Materials) have been automatically populated based on your summary. Would you like me to suggest a specific follow-up action, such as scheduling a meeting?",
+      },
+    ]);
+  }, [extractedDraft, selectedHcp, assistantText]);
+
+  const submitPayload = () => ({
+    ...form,
+    hcp_id: Number(selectedHcpId),
+    notes: form.notes || uiFields.topics_discussed,
+    commitment: form.commitment || uiFields.outcomes,
+    next_step: form.next_step || uiFields.follow_up_actions,
+  });
+
   const onSubmit = (event) => {
     event.preventDefault();
     if (editingInteractionId) {
-      dispatch(updateInteraction({ interactionId: editingInteractionId, payload: form }));
+      dispatch(updateInteraction({ interactionId: editingInteractionId, payload: submitPayload() }));
       return;
     }
-    dispatch(createInteraction({ ...form, hcp_id: Number(selectedHcpId) }));
+    dispatch(createInteraction(submitPayload()));
   };
 
-  const startEdit = (interaction) => {
-    setEditingInteractionId(interaction.id);
-    dispatch(setMode("form"));
-    dispatch(setSelectedHcpId(interaction.hcp_id));
-    setForm({
-      interaction_type: interaction.interaction_type,
-      channel: interaction.channel,
-      product_discussed: interaction.product_discussed,
-      objective: interaction.objective,
-      notes: interaction.notes,
-      commitment: interaction.commitment,
-      next_step: interaction.next_step,
-      follow_up_date: interaction.follow_up_date,
-    });
-  };
-
-  const resetForm = () => {
-    setEditingInteractionId(null);
-    setForm(defaultForm);
-  };
-
-  const onChat = (event) => {
+  const onAssistantSubmit = (event) => {
     event.preventDefault();
-    if (!chatText.trim()) return;
-    dispatch(addUserChat(chatText));
-    dispatch(sendChat({ message: chatText, hcp_id: Number(selectedHcpId) }));
-    setChatText("");
-  };
-
-  const runAllTools = () => {
-    tools.forEach((tool, index) => {
-      window.setTimeout(() => {
-        dispatch(runToolDemo({ tool_name: tool.name, payload: demoPayload(tool.name) }));
-      }, index * 250);
-    });
-  };
-
-  const demoPayload = (toolName) => {
-    const base = { hcp_id: Number(selectedHcpId) };
-    if (toolName === "log_interaction") return { ...base, ...defaultForm };
-    if (toolName === "edit_interaction") {
-      return {
-        ...base,
-        interaction_id: interactions[0]?.id || 1,
-        notes: "Updated note: HCP requested published safety evidence and a compliant follow-up.",
-      };
+    const text = assistantText.trim();
+    if (!text) return;
+    const inferredHcpId = inferHcpIdFromText(text, hcps);
+    if (inferredHcpId) {
+      dispatch(setSelectedHcpId(inferredHcpId));
     }
-    if (toolName === "schedule_follow_up") return { ...base, days_from_now: 5, purpose: "Evidence follow-up" };
-    if (toolName === "check_compliance") return { text: "Check this note for off-label or gift language." };
-    return base;
+    applyAssistantTextToLeftPanel(text, inferredHcpId || selectedHcpId);
+    setAssistantMessages((messages) => [...messages, { role: "user", text }]);
+    setAssistantText("");
+    dispatch(extractInteraction({ message: text, hcp_id: Number(inferredHcpId || selectedHcpId) }));
   };
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">AI-First CRM</p>
-          <h1>HCP Log Interaction</h1>
-        </div>
-        <div className="agent-badge">
-          <Bot size={18} />
-          LangGraph + Groq gemma2-9b-it
-        </div>
-      </header>
+    <main className="page-shell">
+      <section className="interaction-card">
+        <form onSubmit={onSubmit}>
+          <h1>Log HCP Interaction</h1>
+          <h2>Interaction Details</h2>
 
-      <section className="workspace">
-        <aside className="sidebar">
-          <div className="panel-title">
-            <Stethoscope size={18} />
-            Healthcare Professionals
+          <div className="field-grid two">
+            <label>
+              HCP Name
+              <input value={uiFields.hcp_name} readOnly tabIndex="-1" placeholder="Search or select HCP..." />
+            </label>
+
+            <label>
+              Interaction Type
+              <select value={form.interaction_type} disabled>
+                <option>Meeting</option>
+                <option>Detailing Call</option>
+                <option>Phone Call</option>
+                <option>Email Follow-up</option>
+              </select>
+            </label>
           </div>
-          <select value={selectedHcpId} onChange={(event) => dispatch(setSelectedHcpId(event.target.value))}>
-            {hcps.map((hcp) => (
-              <option key={hcp.id} value={hcp.id}>
-                {hcp.name}
-              </option>
-            ))}
-          </select>
-          {selectedHcp && (
-            <div className="hcp-profile">
-              <strong>{selectedHcp.specialty}</strong>
-              <span>{selectedHcp.territory}</span>
-              <span>Segment {selectedHcp.segment}</span>
-              <span>{selectedHcp.preferred_channel}</span>
+
+          <div className="field-grid two">
+            <label>
+              Date
+              <input type="date" value={uiFields.date} readOnly tabIndex="-1" />
+            </label>
+
+            <label>
+              Time
+              <input type="time" value={formatTimeForInput(uiFields.time)} readOnly tabIndex="-1" />
+            </label>
+          </div>
+
+          <label>
+            Attendees
+            <input value={uiFields.attendees} readOnly tabIndex="-1" placeholder="Enter names or search..." />
+          </label>
+
+          <label>
+            Topics Discussed
+            <textarea rows="5" value={uiFields.topics_discussed} readOnly tabIndex="-1" placeholder="Enter key discussion points..." />
+          </label>
+
+          <button className="voice-link" type="button" disabled>🎙️ Summarize from Voice Note (Requires Consent)</button>
+
+          <section className="plain-section">
+            <h2>Materials Shared / Samples Distributed</h2>
+            <div className="plain-row">
+              <div>
+                <h3>Materials Shared</h3>
+                <p>{uiFields.materials_shared || "No materials added."}</p>
+              </div>
+              <button type="button" disabled>🔍 Search/Add</button>
             </div>
-          )}
+            <div className="plain-row">
+              <div>
+                <h3>Samples Distributed</h3>
+                <p>{uiFields.samples_distributed || "No samples added."}</p>
+              </div>
+              <button type="button" disabled>✚ Add Sample</button>
+            </div>
+          </section>
 
-          <div className="panel-title compact">
-            <Sparkles size={18} />
-            Agent Tools
+          <section className="sentiment-block">
+            <h2>Observed/Inferred HCP Sentiment</h2>
+            <div className="sentiment-row">
+              {[
+                ["Positive", "🙂"],
+                ["Neutral", "😐"],
+                ["Negative", "😟"],
+              ].map(([label, icon]) => (
+                <label key={label}>
+                  <input
+                    type="radio"
+                    checked={uiFields.sentiment === label}
+                    disabled
+                  />
+                  <span>{icon}</span>
+                  {label}
+                </label>
+              ))}
+            </div>
+          </section>
+
+          <label>
+            Outcomes
+            <textarea rows="5" value={uiFields.outcomes} readOnly tabIndex="-1" placeholder="Key outcomes or agreements..." />
+          </label>
+
+          <label>
+            Follow-up Actions
+            <textarea rows="4" value={uiFields.follow_up_actions} readOnly tabIndex="-1" placeholder="Enter next steps or tasks..." />
+          </label>
+
+          <div className="ai-followups">
+            <h2>AI Suggested Follow-ups:</h2>
+            <button type="button" disabled>+ Schedule follow-up meeting in 2 weeks</button>
+            <button type="button" disabled>+ Send OncoBoost Phase III PDF</button>
+            <button type="button" disabled>+ Add Dr. Sharma to advisory board invite list</button>
           </div>
-          <div className="tool-metrics">
-            <strong>{tools.length}</strong>
-            <span>LangGraph tools ready</span>
-          </div>
-          <button className="run-all" onClick={runAllTools}>
-            <Sparkles size={16} />
-            Demo All Tools
+
+          <button className="hidden-submit" type="submit" disabled={status === "saving"}>
+            {status === "saving" ? "Saving..." : "Save"}
           </button>
-          <div className="tool-list">
-            {tools.map((tool) => {
-              const Icon = toolIcons[tool.name] || CheckCircle2;
-              return (
-                <button
-                  key={tool.name}
-                  className="tool-button"
-                  title={tool.description}
-                  onClick={() => dispatch(runToolDemo({ tool_name: tool.name, payload: demoPayload(tool.name) }))}
-                >
-                  <Icon size={16} />
-                  <span>{tool.name.replaceAll("_", " ")}</span>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
-
-        <section className="main-panel">
-          <div className="mode-tabs" aria-label="Log mode">
-            <button className={mode === "form" ? "active" : ""} onClick={() => dispatch(setMode("form"))}>
-              <ClipboardList size={18} />
-              Structured
-            </button>
-            <button className={mode === "chat" ? "active" : ""} onClick={() => dispatch(setMode("chat"))}>
-              <MessageSquareText size={18} />
-              Conversational
-            </button>
-          </div>
-
-          {mode === "form" ? (
-            <form className="log-form" onSubmit={onSubmit}>
-              {editingInteractionId && (
-                <div className="edit-banner">
-                  <Edit3 size={16} />
-                  Editing interaction #{editingInteractionId}
-                  <button type="button" onClick={resetForm}>New Log</button>
-                </div>
-              )}
-              <div className="grid two">
-                <label>
-                  Interaction Type
-                  <input value={form.interaction_type} onChange={(e) => setForm({ ...form, interaction_type: e.target.value })} />
-                </label>
-                <label>
-                  Channel
-                  <select value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })}>
-                    <option>In-person</option>
-                    <option>Phone</option>
-                    <option>Email</option>
-                    <option>WhatsApp</option>
-                    <option>Video call</option>
-                  </select>
-                </label>
-              </div>
-              <div className="grid two">
-                <label>
-                  Product Discussed
-                  <input value={form.product_discussed} onChange={(e) => setForm({ ...form, product_discussed: e.target.value })} />
-                </label>
-                <label>
-                  Follow-up Date
-                  <input type="date" value={form.follow_up_date} onChange={(e) => setForm({ ...form, follow_up_date: e.target.value })} />
-                </label>
-              </div>
-              <label>
-                Objective
-                <input value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} />
-              </label>
-              <label>
-                Notes
-                <textarea rows="7" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-              </label>
-              <div className="grid two">
-                <label>
-                  HCP Commitment
-                  <input value={form.commitment} onChange={(e) => setForm({ ...form, commitment: e.target.value })} />
-                </label>
-                <label>
-                  Next Step
-                  <input value={form.next_step} onChange={(e) => setForm({ ...form, next_step: e.target.value })} />
-                </label>
-              </div>
-              <button className="primary-action" type="submit" disabled={status === "saving"}>
-                {editingInteractionId ? <Edit3 size={18} /> : <Save size={18} />}
-                {status === "saving" ? "Saving" : editingInteractionId ? "Update Interaction" : "Log Interaction"}
-              </button>
-              {error && <p className="error">{error}</p>}
-            </form>
-          ) : (
-            <section className="chat-panel">
-              <div className="messages">
-                {chatMessages.map((message, index) => (
-                  <div key={`${message.role}-${index}`} className={`message ${message.role}`}>
-                    {message.text}
-                  </div>
-                ))}
-              </div>
-              <form className="chat-input" onSubmit={onChat}>
-                <input value={chatText} onChange={(event) => setChatText(event.target.value)} placeholder="Describe the HCP interaction..." />
-                <button className="icon-action" title="Send to LangGraph agent">
-                  <MessageSquareText size={18} />
-                </button>
-              </form>
-            </section>
-          )}
-        </section>
-
-        <aside className="insights">
-          <div className="panel-title">
-            <Sparkles size={18} />
-            AI Output
-          </div>
-          <pre>{JSON.stringify(lastAiResult || { status: "No AI action yet" }, null, 2)}</pre>
-
-          <div className="panel-title compact">
-            <Bot size={18} />
-            Agent Trace
-          </div>
-          <div className="trace-list">
-            {agentRuns.slice(0, 4).map((run) => (
-              <article key={run.id} className="trace-card">
-                <strong>{run.selected_tool?.replaceAll("_", " ")}</strong>
-                <span>{run.result?.routing_reason || run.user_message}</span>
-              </article>
-            ))}
-          </div>
-
-          <div className="panel-title compact">
-            <ClipboardList size={18} />
-            Recent Interactions
-          </div>
-          <div className="recent-list">
-            {interactions.slice(0, 5).map((interaction) => (
-              <article key={interaction.id} className="interaction-card">
-                <strong>{interaction.hcp_name}</strong>
-                <span>{interaction.product_discussed}</span>
-                <p>{interaction.summary}</p>
-                <button title="Edit interaction" onClick={() => startEdit(interaction)}>
-                  <Edit3 size={14} />
-                  Edit
-                </button>
-              </article>
-            ))}
-          </div>
-        </aside>
+          {error && <p className="error">{error}</p>}
+        </form>
       </section>
+
+      <aside className="assistant-card">
+        <div className="assistant-header">
+          <h2>🤖 AI Assistant</h2>
+          <p>Log Interaction details here via chat</p>
+        </div>
+
+        <div className="assistant-messages">
+          {assistantMessages.map((message, index) => (
+            <div key={`${message.role}-${index}`} className={`message ${message.role}`}>
+              {message.text}
+            </div>
+          ))}
+        </div>
+
+        <form className="assistant-input" onSubmit={onAssistantSubmit}>
+          <textarea value={assistantText} onChange={(event) => setAssistantText(event.target.value)} placeholder="Describe Interaction..." />
+          <button type="submit">
+            A<br />
+            Log
+          </button>
+        </form>
+      </aside>
     </main>
   );
 }

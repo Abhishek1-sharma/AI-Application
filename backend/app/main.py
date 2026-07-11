@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import Base, SessionLocal, engine, get_db
 from app.models import HCP, Interaction
-from app.schemas import ChatRequest, ChatResponse, InteractionCreate, InteractionUpdate, ToolDemoRequest
+from app.schemas import ChatRequest, ChatResponse, ExtractInteractionRequest, InteractionCreate, InteractionUpdate, ToolDemoRequest
 from app.seed import seed_demo_data
 from app.services.agent import AGENT_TOOLS, run_agent
 from app.services.llm import extract_interaction_payload
@@ -85,6 +85,20 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)) -> ChatResponse:
         answer=f"LangGraph selected {output['selected_tool']}: {output['routing_reason']}",
         data=output["result"],
     )
+
+
+@app.post("/api/agent/extract")
+def extract_interaction(request: ExtractInteractionRequest) -> dict:
+    payload = extract_interaction_payload(request.message, request.hcp_id or 1)
+    return {
+        "message": "AI Assistant extracted interaction details for review.",
+        "interaction": payload,
+        "ai_suggested_followups": [
+            "Schedule follow-up meeting in 2 weeks",
+            "Send approved clinical information",
+            "Add HCP to product education list",
+        ],
+    }
 
 
 @app.get("/api/agent/tools")

@@ -73,6 +73,11 @@ class ChatResponse(BaseModel):
     data: dict
 
 
+class ExtractInteractionRequest(BaseModel):
+    message: str
+    hcp_id: int | None = None
+
+
 class ToolDemoRequest(BaseModel):
     tool_name: str
     payload: dict = {}

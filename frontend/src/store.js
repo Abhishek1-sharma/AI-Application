@@ -27,6 +27,9 @@ export const updateInteraction = createAsyncThunk("crm/updateInteraction", async
 export const sendChat = createAsyncThunk("crm/sendChat", (payload) =>
   api("/agent/chat", { method: "POST", body: JSON.stringify(payload) })
 );
+export const extractInteraction = createAsyncThunk("crm/extractInteraction", (payload) =>
+  api("/agent/extract", { method: "POST", body: JSON.stringify(payload) })
+);
 export const fetchTools = createAsyncThunk("crm/fetchTools", () => api("/agent/tools"));
 export const fetchAgentRuns = createAsyncThunk("crm/fetchAgentRuns", () => api("/agent/runs"));
 export const runToolDemo = createAsyncThunk("crm/runToolDemo", (payload) =>
@@ -43,6 +46,7 @@ const crmSlice = createSlice({
     selectedHcpId: 1,
     mode: "form",
     lastAiResult: null,
+    extractedDraft: null,
     chatMessages: [
       {
         role: "assistant",
@@ -106,6 +110,10 @@ const crmSlice = createSlice({
         state.chatMessages.push({ role: "assistant", text: action.payload.answer });
         const interaction = action.payload.data?.interaction;
         if (interaction) state.interactions.unshift(interaction);
+      })
+      .addCase(extractInteraction.fulfilled, (state, action) => {
+        state.extractedDraft = action.payload;
+        state.lastAiResult = action.payload;
       })
       .addCase(fetchTools.fulfilled, (state, action) => {
         state.tools = action.payload;
